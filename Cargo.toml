@@ -1,0 +1,11 @@
+[package]
+name = "dyn_struct"
+version = "0.1.0"
+edition = "2018"
+
+[features]
+default = ["derive"]
+derive = ["dyn_struct_derive"]
+
+[dependencies]
+dyn_struct_derive = { path = "derive", optional = true }
