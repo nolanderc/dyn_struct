@@ -36,3 +36,18 @@ fn generic() {
     assert_eq!(&foo.values, values);
 }
 
+#[test]
+fn readme() {
+    #[repr(C)]
+    #[derive(DynStruct)]
+    struct MyDynamicType {
+        pub awesome: bool,
+        pub number: u32,
+        pub dynamic: [u32],
+    }
+
+    let foo: Box<MyDynamicType> = MyDynamicType::new(true, 123, &[4, 5, 6, 7]);
+    assert_eq!(foo.awesome, true);
+    assert_eq!(foo.number, 123);
+    assert_eq!(&foo.dynamic, &[4, 5, 6, 7]);
+}

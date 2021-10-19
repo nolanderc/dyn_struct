@@ -12,4 +12,4 @@ default = ["derive"]
 derive = ["dyn_struct_derive"]
 
 [dependencies]
-dyn_struct_derive = { path = "derive", optional = true }
+dyn_struct_derive = { version = "0.1.0", path = "derive", optional = true }
