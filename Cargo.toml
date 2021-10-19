@@ -2,6 +2,10 @@
 name = "dyn_struct"
 version = "0.1.0"
 edition = "2018"
+authors = ["Christofer Nolander <christofer.nolander@gmail.com>"]
+repository = "https://github.com/nolanderc/dyn_struct"
+description = "Construct dynamically sized types safely"
+license = "MIT OR Apache-2.0"
 
 [features]
 default = ["derive"]
