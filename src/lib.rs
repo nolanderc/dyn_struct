@@ -84,32 +84,89 @@
 #[cfg(feature = "derive")]
 pub use dyn_struct_derive::DynStruct;
 
+use std::mem::{align_of, size_of, MaybeUninit};
+
 #[repr(C)]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct DynStruct<T, D> {
-    pub single: T,
-    pub many: [D],
+pub struct DynStruct<Header, Tail> {
+    pub header: Header,
+    pub tail: [Tail],
 }
 
-impl<T, D> DynStruct<T, D> {
-    pub fn new(single: T, many: &[D]) -> Box<Self>
+impl<Header, Tail> DynStruct<Header, Tail> {
+    /// Allocate a new `DynStruct` on the heap. Initialized lazily using an iterator.
+    #[inline]
+    pub fn new<I>(header: Header, tail: I) -> Box<Self>
     where
-        T: Copy,
-        D: Copy,
+        I: IntoIterator<Item = Tail>,
+        I::IntoIter: ExactSizeIterator,
     {
-        use std::mem::{align_of, size_of};
+        let tail = tail.into_iter();
 
-        let total_size = size_of::<T>() + size_of::<D>() * many.len();
+        let mut writer = BoxWriter::<Header, Tail>::new(header, tail.len());
 
-        if total_size == 0 {
-            // Create a fat pointer to a slice of `many.len()` elements, then cast the slice into a
-            // fat pointer to `Self`. This essentially creates the fat pointer to `Self` of
-            // `many.len()` we need.
-            let slice: Box<[()]> = Box::from(slice_with_len(many.len()));
-            let ptr = Box::into_raw(slice) as *mut [()] as *mut Self;
-            unsafe { Box::from_raw(ptr) }
+        for value in tail {
+            writer.write_tail::<I::IntoIter>(value);
+        }
+
+        writer.finish::<I::IntoIter>()
+    }
+
+    /// Allocate a new `DynStruct` on the heap. Uses a slice instead of an iterator (as
+    /// [`DynStruct::new`]). This will probably be faster in most cases (provided the slice is
+    /// readily available).
+    pub fn from_slice(header: Header, tail: &[Tail]) -> Box<Self>
+    where
+        Tail: Copy,
+    {
+        let mut writer = BoxWriter::<Header, Tail>::new(header, tail.len());
+        unsafe {
+            writer.write_slice(tail);
+        }
+        writer.finish::<()>()
+    }
+
+    #[inline]
+    fn align() -> usize {
+        usize::max(align_of::<Header>(), align_of::<Tail>())
+    }
+
+    /// Returns the total size of the `DynStruct<Header, Tail>` structure, provided the length of the
+    /// tail.
+    #[inline]
+    fn size(len: usize) -> usize {
+        let header = size_of::<Header>();
+
+        let tail_align = align_of::<Tail>();
+        let padding = if header % tail_align == 0 {
+            0
         } else {
-            let align = usize::max(align_of::<T>(), align_of::<D>());
+            tail_align - header % tail_align
+        };
+
+        let tail = size_of::<Tail>() * len;
+
+        header + padding + tail
+    }
+}
+
+struct BoxWriter<Header, Tail> {
+    raw: *mut DynStruct<Header, MaybeUninit<Tail>>,
+    written: usize,
+}
+
+impl<Header, Tail> BoxWriter<Header, Tail> {
+    #[inline]
+    pub fn new(header: Header, len: usize) -> Self {
+        let total_size = DynStruct::<Header, Tail>::size(len);
+        let align = DynStruct::<Header, Tail>::align();
+
+        let fat_ptr = if total_size == 0 {
+            // We cannot allocate a region of 0 bytes, thus we use `Box` to create a dangling
+            // pointer with the correct length.
+            let slice: Box<[()]> = Box::from(slice_with_len(len));
+            Box::into_raw(slice)
+        } else {
             let layout = std::alloc::Layout::from_size_align(total_size, align).unwrap();
 
             unsafe {
@@ -118,39 +175,111 @@ impl<T, D> DynStruct<T, D> {
                     std::alloc::handle_alloc_error(layout)
                 }
 
-                Self::single_ptr(raw).copy_from_nonoverlapping(&single as *const T, 1);
-                Self::many_ptr(raw).copy_from_nonoverlapping(many.as_ptr(), many.len());
+                // Initialize the header field
+                raw.cast::<Header>().write(header);
 
-                let slice = std::slice::from_raw_parts_mut(raw as *mut (), many.len());
-                let ptr = slice as *mut [()] as *mut Self;
-                Box::from_raw(ptr)
+                // use a slice as an intermediary to get a fat pointer containing the correct
+                // length
+                let slice = std::slice::from_raw_parts_mut(raw as *mut (), len);
+                slice as *mut [()]
             }
+        };
+
+        BoxWriter {
+            raw: fat_ptr as *mut DynStruct<Header, MaybeUninit<Tail>>,
+            written: 0,
         }
     }
 
-    fn single_ptr(raw: *mut u8) -> *mut T {
-        raw as *mut T
+    #[inline]
+    fn write_tail<I>(&mut self, value: Tail) {
+        let written = self.written;
+        let tail = &mut self.as_mut().tail;
+
+        assert!(
+            written < tail.len(),
+            "got more items than expected. Probable bug in `ExactSizeIterator` for `{}`?",
+            std::any::type_name::<I>(),
+        );
+
+        tail[written].write(value);
+        self.written += 1;
     }
 
-    fn many_ptr(raw: *mut u8) -> *mut D {
+    #[inline]
+    fn finish<I>(mut self) -> Box<DynStruct<Header, Tail>> {
+        let len = self.as_mut().tail.len();
+        assert_eq!(
+            self.written,
+            len,
+            "got fewer items than expected. Probable bug in `ExactSizeIterator` for `{}`?",
+            std::any::type_name::<I>(),
+        );
+
+        // This cast from `DynStruct<Header, MaybeUninit<Tail>>` is sound since all tail elements
+        // now have been initialized
+        let init = self.raw as *mut DynStruct<Header, Tail>;
+
+        unsafe { Box::from_raw(init) }
+    }
+
+    fn as_mut(&mut self) -> &mut DynStruct<Header, MaybeUninit<Tail>> {
+        unsafe { &mut *self.raw }
+    }
+
+    /// # Safety
+    ///
+    /// Assumes that this writer was created with a capacity for `values.len()`
+    unsafe fn write_slice(&mut self, values: &[Tail])
+    where
+        Tail: Copy,
+    {
+        self.as_mut()
+            .tail
+            .as_mut_ptr()
+            .copy_from_nonoverlapping(values.as_ptr().cast(), values.len());
+        self.written = values.len();
+    }
+}
+
+impl<Header, Tail> Drop for BoxWriter<Header, Tail> {
+    fn drop(&mut self) {
         unsafe {
-            let naive = raw.add(std::mem::size_of::<T>());
-            let align = std::mem::align_of::<D>();
-            let ptr = naive.add(naive.align_offset(align));
-            ptr as *mut D
+            // SAFETY: the header field is always initialized
+            std::ptr::drop_in_place(self.raw.cast::<Header>());
+
+            let initialized = self.written;
+            let tail = &mut self.as_mut().tail;
+            for i in 0..initialized {
+                tail[i].as_mut_ptr().drop_in_place();
+            }
         }
     }
 }
 
 impl<T> DynStruct<T, T> {
     /// Get a `DynStruct` as a view over a slice (this does not allocate).
-    pub fn from_slice(values: &[T]) -> &Self {
+    pub fn slice_view(values: &[T]) -> &Self {
         assert!(
             !values.is_empty(),
-            "attempted to create `{}` without `single` value (`values.is_empty()`)",
+            "attempted to create `{}` from empty slice (needs at least 1 element)",
             std::any::type_name::<Self>()
         );
         let slice = &values[..values.len() - 1];
+        unsafe { &*(slice as *const [T] as *const Self) }
+    }
+}
+
+impl<T, const N: usize> DynStruct<[T; N], T> {
+    /// Get a `DynStruct` as a view over a slice (this does not allocate).
+    pub fn slice_view(values: &[T]) -> &Self {
+        assert!(
+            values.len() >= N,
+            "attempted to create `{}` from empty slice (needs at least {} elements)",
+            std::any::type_name::<Self>(),
+            N,
+        );
+        let slice = &values[..values.len() - N];
         unsafe { &*(slice as *const [T] as *const Self) }
     }
 }
@@ -166,22 +295,38 @@ mod tests {
 
     #[test]
     fn mixed_types() {
-        let mixed = DynStruct::new((true, 32u64), &[1, 2, 3, 4]);
-        assert_eq!(mixed.single, (true, 32u64));
-        assert_eq!(&mixed.many, &[1, 2, 3, 4]);
+        let mixed = DynStruct::new((true, 32u16), [1u64, 2, 3, 4]);
+        assert_eq!(mixed.header, (true, 32u16));
+        assert_eq!(&mixed.tail, &[1, 2, 3, 4]);
     }
 
     #[test]
     fn zero_sized_types() {
-        let zero = DynStruct::new((), &[(), ()]);
-        assert_eq!(zero.single, ());
-        assert_eq!(&zero.many, &[(), ()]);
+        let zero = DynStruct::new((), [(), ()]);
+        assert_eq!(zero.header, ());
+        assert_eq!(&zero.tail, &[(), ()]);
     }
 
     #[test]
     fn from_slice() {
-        let same = DynStruct::<u32, u32>::from_slice(&[1, 2, 3]);
-        assert_eq!(same.single, 1);
-        assert_eq!(&same.many, &[2, 3]);
+        let slice = DynStruct::from_slice((true, 32u16), &[1, 2, 3]);
+        assert_eq!(slice.header, (true, 32u16));
+        assert_eq!(&slice.tail, &[1, 2, 3]);
+
+        let array = DynStruct::<[u32; 3], u32>::slice_view(&[1, 2, 3, 4, 5]);
+        assert_eq!(array.header, [1, 2, 3]);
+        assert_eq!(&array.tail, &[4, 5]);
+    }
+
+    #[test]
+    fn slice_view() {
+        let same = DynStruct::<u32, u32>::slice_view(&[1, 2, 3]);
+        assert_eq!(same.header, 1);
+        assert_eq!(&same.tail, &[2, 3]);
+
+        let array = DynStruct::<[u32; 3], u32>::slice_view(&[1, 2, 3, 4, 5]);
+        assert_eq!(array.header, [1, 2, 3]);
+        assert_eq!(&array.tail, &[4, 5]);
     }
 }
+

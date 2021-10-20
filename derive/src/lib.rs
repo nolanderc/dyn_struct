@@ -43,12 +43,12 @@ fn expand(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                     }
                     syn::GenericParam::Lifetime(life) => {
                         let lifetime = &life.lifetime;
-                        quote!{ &#lifetime () }
-                    },
+                        quote! { &#lifetime () }
+                    }
                     syn::GenericParam::Const(constant) => {
                         let ident = &constant.ident;
-                        quote!{ [(); #ident] }
-                    },
+                        quote! { [(); #ident] }
+                    }
                 });
 
                 phantom_field = quote! {
@@ -97,16 +97,32 @@ fn expand(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                 quote! { #name: #ty }
             });
 
-            let ident = &input.ident;
-            let dynamic_type = &dynamic_field.ty;
+            let dynamic_type = match &dynamic_field.ty {
+                syn::Type::Slice(inner) => inner.elem.as_ref(),
+                _ => {
+                    return Err(err!(
+                        dynamic_field.ty,
+                        "the last field needs to be a slice `[T]`"
+                    ))
+                }
+            };
+            let dynamic_name = dynamic_field
+                .ident
+                .clone()
+                .unwrap_or_else(|| syn::Ident::new("tail", span(dynamic_type)));
+
+            let struct_ident = &input.ident;
             Ok(quote! {
-                impl #impl_generics #ident #type_generics #where_clause {
-                    pub fn new(#(#sized_parameters,)* dynamic: &#dynamic_type) -> Box<Self> {
+                impl #impl_generics #struct_ident #type_generics #where_clause {
+                    pub fn new<I>(#(#sized_parameters,)* #dynamic_name: I) -> Box<Self>
+                        where I: std::iter::IntoIterator<Item = #dynamic_type>,
+                              <I as std::iter::IntoIterator>::IntoIter: std::iter::ExactSizeIterator
+                    {
                         #single_definition
 
-                        let single: #single #type_generics = #single_init;
+                        let header: #single #type_generics = #single_init;
 
-                        let dyn_struct = dyn_struct::DynStruct::new(single, dynamic);
+                        let dyn_struct = dyn_struct::DynStruct::new(header, #dynamic_name);
                         let ptr = std::boxed::Box::into_raw(dyn_struct);
                         unsafe { std::boxed::Box::from_raw(ptr as *mut Self) }
                     }
@@ -175,23 +191,3 @@ fn find_ident(tokens: TokenStream) -> Option<syn::Ident> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn simple() {
-        let input = quote! {
-            #[repr(C)]
-            struct Foo<T, U> {
-                value: u32,
-                list: [u32],
-            }
-        }
-        .into();
-        let input = syn::parse2::<syn::DeriveInput>(input).unwrap();
-        let output = expand(input).unwrap();
-
-        assert_eq!(output.to_string(), quote! {}.to_string());
-    }
-}

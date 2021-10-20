@@ -10,11 +10,9 @@ fn custom() {
         pub values: [u32],
     }
 
-    let inner = 14;
-    let values = &[1, 2, 3, 4];
-    let foo = Foo::new(inner, values);
-    assert_eq!(foo.inner, inner);
-    assert_eq!(&foo.values, values);
+    let foo = Foo::new(14, vec![1, 2, 3, 4]);
+    assert_eq!(foo.inner, 14);
+    assert_eq!(&foo.values, [1, 2, 3, 4]);
 }
 
 #[test]
@@ -27,13 +25,10 @@ fn generic() {
         pub values: [U],
     }
 
-    let inner = true;
-    let text = "hello";
-    let values = &[1, 2, 3, 4];
-    let foo = Foo::new(inner, text, values);
-    assert_eq!(foo.inner, inner);
-    assert_eq!(foo.text, text);
-    assert_eq!(&foo.values, values);
+    let foo = Foo::new(true, "hello", [1, 2, 3, 4]);
+    assert_eq!(foo.inner, true);
+    assert_eq!(foo.text, "hello");
+    assert_eq!(&foo.values, [1, 2, 3, 4]);
 }
 
 #[test]
@@ -46,8 +41,9 @@ fn readme() {
         pub dynamic: [u32],
     }
 
-    let foo: Box<MyDynamicType> = MyDynamicType::new(true, 123, &[4, 5, 6, 7]);
+    let foo: Box<MyDynamicType> = MyDynamicType::new(true, 123, 4..8);
     assert_eq!(foo.awesome, true);
     assert_eq!(foo.number, 123);
     assert_eq!(&foo.dynamic, &[4, 5, 6, 7]);
 }
+
