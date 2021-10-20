@@ -1,5 +1,5 @@
-![Crates.io](https://img.shields.io/crates/v/dyn_struct)
-![docs.rs](https://img.shields.io/docsrs/dyn_struct)
+[![Crates.io](https://img.shields.io/crates/v/dyn_struct)](https://crates.io/crates/dyn_struct)
+[![docs.rs](https://img.shields.io/docsrs/dyn_struct)](https://docs.rs/dyn_struct)
 
 # `dyn_struct`
 
