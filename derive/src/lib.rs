@@ -66,7 +66,6 @@ fn expand(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             if matches!(struc.fields, syn::Fields::Named(_)) {
                 single_definition = quote! {
                     #[repr(C)]
-                    #[derive(Copy, Clone)]
                     struct #single #impl_generics #where_clause {
                         #(#sized_fields,)*
                         #phantom_field
@@ -80,7 +79,6 @@ fn expand(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             } else {
                 single_definition = quote! {
                     #[repr(C)]
-                    #[derive(Copy, Clone)]
                     struct #single #impl_generics ( #(#sized_fields,)* #phantom_init ) #where_clause;
                 };
                 single_idents = sized_fields

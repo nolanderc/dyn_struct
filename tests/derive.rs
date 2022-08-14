@@ -1,5 +1,4 @@
-
-use dyn_struct_derive::DynStruct;
+use dyn_struct::DynStruct;
 
 #[test]
 fn custom() {
@@ -47,3 +46,31 @@ fn readme() {
     assert_eq!(&foo.dynamic, &[4, 5, 6, 7]);
 }
 
+#[test]
+fn non_copy_with_drop() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    struct Droppable;
+    impl Drop for Droppable {
+        fn drop(&mut self) {
+            eprintln!("drop");
+            DROP_COUNT.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[repr(C)]
+    #[derive(DynStruct)]
+    struct MyDynamicType {
+        pub boxed: Droppable,
+        pub dynamic: [u32],
+    }
+
+    let foo: Box<MyDynamicType> = MyDynamicType::new(Droppable, 1..8);
+    assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 0, "creating DynStruct should not result in drop");
+
+    assert_eq!(&foo.dynamic, &[1, 2, 3, 4, 5, 6, 7]);
+    drop(foo);
+
+    assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 1, "dropping DynStruct should result in drop");
+}

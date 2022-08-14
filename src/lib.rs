@@ -225,6 +225,9 @@ impl<Header, Tail> BoxWriter<Header, Tail> {
         // now have been initialized
         let init = self.raw as *mut DynStruct<Header, Tail>;
 
+        // once we have finished constructing the value, don't run the destructor
+        std::mem::forget(self);
+
         unsafe { Box::from_raw(init) }
     }
 

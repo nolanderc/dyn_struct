@@ -1,6 +1,6 @@
 [package]
 name = "dyn_struct"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2018"
 authors = ["Christofer Nolander <christofer.nolander@gmail.com>"]
 repository = "https://github.com/nolanderc/dyn_struct"
@@ -12,4 +12,4 @@ default = ["derive"]
 derive = ["dyn_struct_derive"]
 
 [dependencies]
-dyn_struct_derive = { version = "0.2.0", path = "derive", optional = true }
+dyn_struct_derive = { version = "0.3.0", path = "derive", optional = true }
