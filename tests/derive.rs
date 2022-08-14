@@ -48,7 +48,7 @@ fn readme() {
 
 #[test]
 fn non_copy_with_drop() {
-    use std::sync::atomic::{AtomicBool,AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     static MAY_DROP: AtomicBool = AtomicBool::new(false);
     static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -69,14 +69,23 @@ fn non_copy_with_drop() {
     #[repr(C)]
     #[derive(DynStruct)]
     struct MyDynamicType {
-        pub boxed: Droppable,
+        pub droppable: Droppable,
         pub dynamic: [Droppable],
     }
 
-    let foo: Box<MyDynamicType> = MyDynamicType::new(Droppable, [Droppable, Droppable, Droppable]);
-    assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 0, "creating DynStruct should not result in drop");
+    let foo: Box<MyDynamicType> =
+        MyDynamicType::new(Droppable, 123, [Droppable, Droppable, Droppable]);
+    assert_eq!(
+        DROP_COUNT.load(Ordering::SeqCst),
+        0,
+        "creating DynStruct should not result in drop"
+    );
 
     MAY_DROP.store(true, Ordering::SeqCst);
     drop(foo);
-    assert_eq!(DROP_COUNT.load(Ordering::SeqCst), 4, "dropping DynStruct should result in drop");
+    assert_eq!(
+        DROP_COUNT.load(Ordering::SeqCst),
+        4,
+        "dropping DynStruct should result in drop"
+    );
 }
