@@ -73,8 +73,7 @@ fn non_copy_with_drop() {
         pub dynamic: [Droppable],
     }
 
-    let foo: Box<MyDynamicType> =
-        MyDynamicType::new(Droppable, 123, [Droppable, Droppable, Droppable]);
+    let foo: Box<MyDynamicType> = MyDynamicType::new(Droppable, [Droppable, Droppable, Droppable]);
     assert_eq!(
         DROP_COUNT.load(Ordering::SeqCst),
         0,
