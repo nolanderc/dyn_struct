@@ -4,14 +4,14 @@ version = 3
 
 [[package]]
 name = "dyn_struct"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "dyn_struct_derive",
 ]
 
 [[package]]
 name = "dyn_struct_derive"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "proc-macro2",
  "quote",

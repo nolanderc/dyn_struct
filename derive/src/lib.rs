@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::quote;
 
 #[proc_macro_derive(DynStruct)]
@@ -183,8 +183,8 @@ fn is_repr_c(attr: &syn::Attribute) -> bool {
 
 fn find_ident(tokens: TokenStream) -> Option<syn::Ident> {
     tokens.into_iter().find_map(|tree| match tree {
-        quote::__private::TokenTree::Group(group) => find_ident(group.stream()),
-        quote::__private::TokenTree::Ident(ident) => Some(ident.clone()),
+        TokenTree::Group(group) => find_ident(group.stream()),
+        TokenTree::Ident(ident) => Some(ident.clone()),
         _ => None,
     })
 }
